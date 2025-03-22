@@ -1,4 +1,4 @@
-# Power Exposer
+# Power Guard
 
 The primary purpose of this project was to provide an AV plugin that created a new technique of AV Detection, by gathering metrics
 based on GPU usage at the process level and **OVERALL** consumption. The way this was possible to do was by using the NVIDIA Management Library (**NVML**) along with the (Windows Management Instrumentation) **WMI**. 
