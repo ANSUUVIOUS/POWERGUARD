@@ -22,6 +22,10 @@
 #include <string>
 #include <chrono>
 #include <thread>
+#include <iomanip>
+#include <locale>
+#include <codecvt>
+#include <fstream>
 
 
 #include "comms.hpp"
@@ -48,6 +52,77 @@
 
 class Utils {
 public:
+    std::wstring CreateTempTextFileWithContent(const std::wstring& buffer) {
+        // Get the current executable's directory
+        WCHAR exePath[MAX_PATH];
+        GetModuleFileNameW(NULL, exePath, MAX_PATH);
+
+        std::wstring dirPath = exePath;
+        size_t pos = dirPath.find_last_of(L"\\/");
+        if (pos != std::wstring::npos) {
+            dirPath = dirPath.substr(0, pos + 1);
+        }
+
+        // Generate a unique temporary filename
+        WCHAR tempFileName[MAX_PATH];
+        GetTempFileNameW(dirPath.c_str(), L"TEMP", 0, tempFileName);
+
+        // Rename file to have a .txt extension (optional but requested)
+        std::wstring renamedFile = std::wstring(tempFileName) + L".txt";
+        MoveFileW(tempFileName, renamedFile.c_str());
+
+        // Write buffer to the file
+        std::wofstream outFile(renamedFile);
+        if (outFile.is_open()) {
+            outFile << buffer;
+            outFile.close();
+        }
+        else {
+            std::wcerr << L"Failed to write to file: " << renamedFile << std::endl;
+        }
+
+        return renamedFile;
+    }
+
+
+    VOID PrintLastErrorMessage(DWORD errorCode) {
+        LPWSTR messageBuffer = NULL;
+
+        FormatMessageW(
+            FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+            NULL,
+            errorCode,
+            0, // Default language
+            (LPWSTR)&messageBuffer,
+            0,
+            NULL
+        );
+
+        if (messageBuffer) {
+            wprintf(L"\n\nError %d: %s\n", errorCode, messageBuffer);
+            LocalFree(messageBuffer);
+        }
+        else {
+            std::wcout << L"Unknown error code: " << errorCode << std::endl;
+        }
+    }
+
+    std::wstring stringToWstring(const std::string& str) {
+        std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+        return converter.from_bytes(str);
+    }
+
+    std::string getOpcodesAsHexString(void* address, size_t length) {
+        PUCHAR bytePtr = static_cast<UCHAR*>(address);
+        std::ostringstream oss;
+
+        for (size_t i = 0; i < length; ++i) {
+            oss << "\\x" << std::hex << std::setw(2) << std::setfill('0') << (int)bytePtr[i];
+        }
+
+        return oss.str();
+    }
+
     std::string RunPowerShellCommand(const std::wstring& command) {
         HANDLE hReadPipe, hWritePipe;
         SECURITY_ATTRIBUTES sa = { sizeof(SECURITY_ATTRIBUTES), NULL, TRUE };
@@ -74,6 +149,7 @@ public:
 
         // Start PowerShell process
         if (!CreateProcessW(NULL, &psCommand[0], NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi)) {
+            PrintLastErrorMessage(GetLastError());
             std::wcerr << L"❌ Failed to start PowerShell.\n";
             CloseHandle(hReadPipe);
             CloseHandle(hWritePipe);
@@ -1170,12 +1246,12 @@ public:
     // 🔹 Function to find GPU % Usage given a process
 
     // Function to find CPU % usage for given PID
-    DOUBLE GetCpuUsageForProcess(DWORD pid, CONST WCHAR * processName) {
+    DOUBLE GetCpuUsageForProcess(DWORD pid) {
 
         // Attempt to open process to query information
         HANDLE hProcess = OpenProcess(PROCESS_QUERY_INFORMATION, FALSE, pid);
         if (!hProcess) {
-            fwprintf(stderr, L"[ERROR] Failed to open process %s (PID: %lu).\n", processName, pid);
+            fwprintf(stderr, L"[ERROR] Failed to open process (PID: %lu).\n", pid);
             return 0.0;
         }
 
@@ -1183,7 +1259,7 @@ public:
 
         // Get CPU Cycles for this process (initial)
         if (!QueryProcessCycleTime(hProcess, &lastCycles)) {
-            fwprintf(stderr, L"[ERROR] Failed to query process cycles for %s (PID: %lu).\n", processName, pid);
+            fwprintf(stderr, L"[ERROR] Failed to query process cycles for (PID: %lu).\n", pid);
             CloseHandle(hProcess);
             return 0.0;
         }
@@ -1193,7 +1269,7 @@ public:
 
         // Get CPU Cycles for this process (final)
         if (!QueryProcessCycleTime(hProcess, &currentCycles)) {
-            fwprintf(stderr, L"[ERROR] Failed to query process cycles for %s (PID: %lu).\n", processName, pid);
+            fwprintf(stderr, L"[ERROR] Failed to query process cycles for (PID: %lu).\n", pid);
             CloseHandle(hProcess);
             return 0.0;
         }
@@ -1204,7 +1280,7 @@ public:
         GetSystemInfo(&sysInfo);
         DWORD numProcessors = sysInfo.dwNumberOfProcessors;
 
-        wprintf(L"Total Process CPU Usage for %s: %.2f%%\n", processName, (cycleDiff / 10000.0) / numProcessors);
+        wprintf(L"Total Process CPU Usage for (PID %d) %.2f%%\n", pid, (cycleDiff / 10000.0) / numProcessors);
 
         CloseHandle(hProcess);
 
@@ -1260,7 +1336,7 @@ public:
     }
 
     // Function to get GPU usage for a specific PID from the snapshot as a double
-    DOUBLE GetGpuUsageForProcess(INT pid, CONST WCHAR* processName, CONST GpuUsageSnapshot& snapshot) {
+    DOUBLE GetGpuUsageForProcess(INT pid, CONST GpuUsageSnapshot& snapshot) {
         DOUBLE memoryUsage = 0;
         std::map<INT, DOUBLE>::const_iterator it;
         if (snapshot.totalMemoryMB <= 0) {
@@ -1273,7 +1349,7 @@ public:
             memoryUsage = (memoryMB) > 100 ? 100 : memoryMB;
         }
     exit:
-        wprintf(L"Total Process GPU Usage for %s: %.2f%%\n", processName, memoryUsage);
+        wprintf(L"Total Process GPU Usage for (PID %d): %.2f%%\n", pid, memoryUsage);
         return memoryUsage; // PID not found or no memory usage
     }
 
@@ -1302,35 +1378,28 @@ public:
             return ERROR_INVALID_HANDLE;
         }
 
-        monitor.isConsistentlyHighUsage();
-
-        if (TRUE) {
-            //if (monitor.isConsistentlyHighUsage()) {
+        if (monitor.isConsistentlyHighUsage()) {
             results = comms.GetProcesses();
+            procmon.gpustats = procmon.GetGpuUsageSnapshot();
             if (!results || sizeof(comms.ProcessList) == 0) {
                 wprintf(L"Issue getting processes associated to the system. Therefore exiting.");
                 return ERROR_ACCESS_DENIED;
             }
 
+            
             for (DWORD idx = 0; idx < comms.ProcessList->size; idx++) {
                 DWORD pid = (DWORD)comms.ProcessList->processes[idx].ProcessID;
                 if (pid == util.getpid() || pid == util.getppid()) {
                     continue;
                 }
                 else if (pid > 0) {
-                    std::wstring processName = util.GetProcessName(pid);
-                    if (DEBUG) {
-                        std::wcout << L"Process name: " << processName << std::endl;
-                    }
-                    std::wcout << std::endl;
                     
-                    procmon.gpustats = procmon.GetGpuUsageSnapshot(); 
-                    DOUBLE pid_gpu_usage = procmon.GetGpuUsageForProcess(pid, processName.c_str(), procmon.gpustats);
-                    DOUBLE pid_cpu_usage = procmon.GetCpuUsageForProcess(pid, processName.c_str());
+                    DOUBLE pid_gpu_usage = procmon.GetGpuUsageForProcess(pid, procmon.gpustats);
+                    DOUBLE pid_cpu_usage = procmon.GetCpuUsageForProcess(pid);
                     std::wcout << std::endl;
-                    if (pid_gpu_usage > HIGH_GPU_PID_THRESHOLD || pid_cpu_usage > HIGH_CPU_PID_THRESOLD) {
+                    if (pid_gpu_usage > HIGH_GPU_PID_THRESHOLD && pid_cpu_usage > HIGH_CPU_PID_THRESOLD) {
 
-                        std::wcout << L"\nPid " + pid << L" is a potentially malicious process that needs investigation. Determining if malicious.\n";
+                        std::wcout << L"\nPid " << pid << L" is a potentially malicious process that needs investigation. Determining if malicious.\n";
                         
                         PProcessImageInfo image = comms.GetImageBase(pid);
                         if (image == NULL || image->ImageBase == NULL) {
@@ -1345,28 +1414,43 @@ public:
                         DWORD pathSize = MAX_PATH;
                         util.GetProcessTextSectionInfo(pid, pid_base_address, &pid_text_address, &text_size, &text_memory);
 
-                        std::string byteString(reinterpret_cast<CONST CHAR*>(text_memory), text_size);
+                        if (text_size == 0) {
+                            continue;
+                        }
 
+						std::string byteString = util.getOpcodesAsHexString(text_memory, text_size);
+                        std::wstring opcodes = util.stringToWstring(byteString);
+                        std::wstring opcode_filepath = util.CreateTempTextFileWithContent(opcodes);
+
+
+                        std::wstring cmd = L"python3 C:\\Users\\bryan - demo\\Documents\\Demo\\ML\\classifierv2.py " + opcode_filepath;
+                        std::string results = util.RunPowerShellCommand(cmd);
+						util.RunPowerShellCommand(L"Remove-Item " + opcode_filepath);
 
                         // Call code for determining the text_memory is malicious
+                        //printf("%s\n", results);
 
+                        if (results == "[1.]") {
+                        //if (/*CONDITION*/ FALSE) {
+                            std::wstring processName = util.GetProcessName(pid);
 
-
-                        if (/*CONDITION*/ FALSE) {
                             std::wcout << L"PID " << pid << L" IS DEEMED MALICIOUS! Killing process now!\n";
                             util.GetProcessExecutablePath(pid, exePath, pathSize);
-                            if (!util.TerminateProcessByPID(pid)) {
+                            //if (!util.TerminateProcessByPID(pid)) {
+                            if (FALSE) {
                                 //BOOL result = comms.KillProcess(pid);
                                 BOOL result = TRUE;
                                 if (!result) {
-                                    wprintf(L"Failed to kill process %d. Please investigate this.\n", pid);
+                                    wprintf(L"Failed to kill process %s (PID %d). Please investigate this.\n", processName, pid);
                                 }
                             }
                             else {
-                                wprintf(L"Successfully termianted process %d!\n", pid);
+                                wprintf(L"Successfully termianted process %s (PID %d)!\n", processName, pid);
                             }
 
-                            util.DeleteFileWithFallback(exePath);
+                            wprintf(L"\nExe path: %s\n", exePath);
+
+                            //util.DeleteFileWithFallback(exePath);
                         }
                     }
                 }
@@ -1381,35 +1465,7 @@ public:
 
 // Main function
 INT main(INT argc, LPSTR * argv) {
-
-    //CCommunication comms;
-    //PerformanceMonitor monitor;
-    //Utils util;
-
-    //if (argc < 2) {
-    //    printf("Too little arguments - therefore exiting.\n");
-    //    return -1;
-    //}
-
-    //BOOL results = comms.Initialize();
-    //if (!results) {
-    //    return -1;
-    //}
-
-    //SIZE_T edge_text_size = 0;
-    //PVOID edge_text_address = NULL;
-
-    //PVOID edge_address = comms.GetImageBase(std::stoi(argv[1]))->ImageBase;
-    //PBYTE edge_text_memory = NULL;
-
-    //util.GetProcessTextSectionInfo(std::stoi(argv[1]), edge_address, &edge_text_address, &edge_text_size, &edge_text_memory);
-    //free(edge_text_memory);
-
-    //comms.KillProcess(std::stoi(argv[1]));
-
-    //printf("%d is the text size\n", edge_text_size);
-
-    PowerExpOrchestrator orch;
+   PowerExpOrchestrator orch;
 
    return orch.systemtest();
 }
