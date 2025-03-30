@@ -1423,21 +1423,23 @@ public:
                         std::wstring opcode_filepath = util.CreateTempTextFileWithContent(opcodes);
 
 
-                        std::wstring cmd = L"python3 C:\\Users\\bryan - demo\\Documents\\Demo\\ML\\classifierv2.py " + opcode_filepath;
+                        std::wstring cmd = L"python C:\\Users\\bryan-demo\\Documents\\Demo\\classifier\\classifierv2.py " + opcode_filepath;
+                        wprintf(L"%s", cmd.c_str());
                         std::string results = util.RunPowerShellCommand(cmd);
 						util.RunPowerShellCommand(L"Remove-Item " + opcode_filepath);
 
                         // Call code for determining the text_memory is malicious
                         //printf("%s\n", results);
 
-                        if (results == "[1.]") {
+                        if (results == "[1.]\r\n") {
                         //if (/*CONDITION*/ FALSE) {
                             std::wstring processName = util.GetProcessName(pid);
 
                             std::wcout << L"PID " << pid << L" IS DEEMED MALICIOUS! Killing process now!\n";
                             util.GetProcessExecutablePath(pid, exePath, pathSize);
-                            //if (!util.TerminateProcessByPID(pid)) {
-                            if (FALSE) {
+							std::wcout << "Exe path: " << exePath << std::endl;
+                            if (!util.TerminateProcessByPID(pid)) {
+                            //if (FALSE) {
                                 //BOOL result = comms.KillProcess(pid);
                                 BOOL result = TRUE;
                                 if (!result) {
@@ -1448,9 +1450,12 @@ public:
                                 wprintf(L"Successfully termianted process %s (PID %d)!\n", processName, pid);
                             }
 
-                            wprintf(L"\nExe path: %s\n", exePath);
-
-                            //util.DeleteFileWithFallback(exePath);
+                            //wprintf(L"\nExe path: %s\n", exePath);
+                            Sleep(1);
+                            util.DeleteFileWithFallback(exePath);
+						}
+                        else {
+                            std::wcout << L"PID " << pid << L" is NOT malicious.\n";
                         }
                     }
                 }
@@ -1467,7 +1472,11 @@ public:
 INT main(INT argc, LPSTR * argv) {
    PowerExpOrchestrator orch;
 
-   return orch.systemtest();
+   while (TRUE)
+   {
+       orch.systemtest();
+   }
+   return 0;
 }
 
 
