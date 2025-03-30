@@ -39,7 +39,7 @@
 #define HIGH_CPU_THRESHOLD 80  // CPU usage percentage threshold
 #define HIGH_GPU_THRESHOLD 70  // GPU usage percentage threshold
 #define HIGH_POWER_THRESHOLD 50 // Power in watts (adjust as needed)
-#define HIGH_BATTERY_DRAIN -10  // Negative value indicates battery drain
+#define HIGH_BATTERY_DRAIN 50000 //  indicates battery drain rate
 #define CONSISTENT_HIGH_USAGE_DURATION 3  // Number of consecutive readings
 
 
@@ -1115,7 +1115,7 @@ public:
                 std::cout << "[ALERT] High Power usage detected!" << std::endl;
                 isHighUsage = TRUE;
             }
-            if (metrics.batteryDischargeRate < HIGH_BATTERY_DRAIN) {
+            if (metrics.batteryDischargeRate >= HIGH_BATTERY_DRAIN) {
                 std::cout << "[ALERT] High battery discharge detected!" << std::endl;
                 isHighUsage = TRUE;
             }
@@ -1279,15 +1279,17 @@ public:
         SYSTEM_INFO sysInfo;
         GetSystemInfo(&sysInfo);
         DWORD numProcessors = sysInfo.dwNumberOfProcessors;
+        DOUBLE usage = (cycleDiff / 10000.0) / numProcessors;
+        usage = usage > 100 ? 100 : usage;
 
-        wprintf(L"Total Process CPU Usage for (PID %d) %.2f%%\n", pid, (cycleDiff / 10000.0) / numProcessors);
+        wprintf(L"Total Process CPU Usage for (PID %d): %.2f%%\n", pid, usage);
 
         CloseHandle(hProcess);
 
         //Sleep(100);
         //std::this_thread::sleep_for(std::chrono::seconds(2)); // Sleep to avoid excessive CPU usage
-        
-        return (cycleDiff / 10000.0) / numProcessors;
+       
+        return usage;
     }
 
     // Function to get a snapshot of GPU usage data
