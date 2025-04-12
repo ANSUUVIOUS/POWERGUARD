@@ -15,3 +15,12 @@ This plugin consists of using the following to perform it's operation:
 - An ML model that verifies if the opcodes of a process are malicious or not
 - A Kernel level driver that gathers system process info, processes that are running on the system, and a forced termination techbique that **guarantees** succssful killing of the process
 
+## Execution Instructions
+
+Once complied in Visual Studio, you just need to run the following:
+
+```
+.\Power_exp.exe
+```
+
+This will allow for the plugin to be able to run - prior to compilation, you need to install the [PowerGuard Driver](https://github.com/ANSUUVIOUS/CryptoStomper_AV_Driver/tree/master), and the ML model that is needed for the successful operation of the software.
